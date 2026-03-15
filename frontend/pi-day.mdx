@@ -1,0 +1,292 @@
+---
+title: 'Pi Day app'
+description: 'An interactive Pi Day (March 14) celebration web app in Spanish with animated sections, a digit memory game, and a floating chatbot.'
+keywords: ['pi day', 'pi', 'react', 'framer motion', 'interactive', 'educational', 'spanish']
+---
+
+The `@workspace/pi-day` package is a single-page React app celebrating Pi Day (March 14). Everything is written in Spanish. It features a space-themed hero, multiple educational sections, an interactive digit memory game, a Pi digit visualizer, and PiBot — a floating chatbot with hardcoded responses about Pi.
+
+## Package details
+
+| Field | Value |
+|---|---|
+| Package name | `@workspace/pi-day` |
+| Entry point | `src/main.tsx` |
+| App root | `src/App.tsx` |
+| Router | Wouter (`wouter` v3) |
+| Language | Spanish (UI text) |
+
+## Tech stack
+
+<CardGroup cols={2}>
+  <Card title="React 18" icon="react">
+    Component model with hooks. Bundled by Vite.
+  </Card>
+  <Card title="Wouter" icon="route">
+    Lightweight client-side router. `BASE_URL`-aware.
+  </Card>
+  <Card title="TanStack Query" icon="database">
+    `QueryClientProvider` wraps the app for async data management.
+  </Card>
+  <Card title="Framer Motion" icon="sparkles">
+    Scroll-driven and entrance animations across all sections.
+  </Card>
+  <Card title="Tailwind CSS" icon="palette">
+    Utility-first styling with custom `glass-panel` and glow utilities.
+  </Card>
+  <Card title="Radix UI" icon="layers">
+    Accessible primitive components (dialogs, tooltips, toasts, etc.).
+  </Card>
+</CardGroup>
+
+## Running the app
+
+```bash
+pnpm --filter @workspace/pi-day run dev
+```
+
+Vite starts the dev server on `0.0.0.0`. The port is configured by the environment.
+
+```bash
+# Type-check without emitting
+pnpm --filter @workspace/pi-day run typecheck
+
+# Build for production
+pnpm --filter @workspace/pi-day run build
+```
+
+## App structure
+
+The component tree flows from `App.tsx` down to the single `Home` page and its sections:
+
+```text
+App
+├── QueryClientProvider
+├── TooltipProvider
+├── WouterRouter (base = BASE_URL)
+│   ├── EasterEgg          ← invisible, listens for keyboard input globally
+│   └── Router (Switch)
+│       ├── Route "/"      → Home
+│       └── Route *        → NotFound
+└── Toaster
+```
+
+### Routing (`src/App.tsx`)
+
+```tsx src/App.tsx
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={Home} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <EasterEgg />
+          <Router />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+```
+
+### Home page layout (`src/pages/Home.tsx`)
+
+The `Home` component renders all sections in a fixed vertical order:
+
+```tsx src/pages/Home.tsx
+export default function Home() {
+  return (
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30">
+      <Navbar />
+      <main>
+        <Hero />
+        <WhatIsPi />
+        <History />
+        <MemoryGame />
+        <Visualizer />
+        <RealWorld />
+      </main>
+      <footer>…</footer>
+      <PiBot />
+    </div>
+  );
+}
+```
+
+## Sections
+
+Each section is a self-contained component under `src/components/sections/`.
+
+### Navbar
+
+`src/components/Navbar.tsx` — A fixed top navigation bar. Turns frosted-glass on scroll (`backdrop-blur-lg`). Links use smooth `scrollIntoView` to jump to section anchors. Collapses to a hamburger menu on mobile.
+
+Nav links and their target anchors:
+
+| Label | Anchor |
+|---|---|
+| Inicio | `#hero` |
+| ¿Qué es π? | `#what-is-pi` |
+| Historia | `#history` |
+| Desafío | `#game` |
+| Galería | `#gallery` |
+| Mundo Real | `#real-world` |
+
+### Hero
+
+`src/components/sections/Hero.tsx` — Full-viewport opening section. Features:
+
+- Space background image with gradient overlay
+- Giant animated π symbol (Framer Motion scale-in)
+- Scrolling Pi digits strip that loops through the first 50 digits
+- Two CTA buttons: **Explorar Pi** (→ `#what-is-pi`) and **Jugar Desafío** (→ `#game`)
+- Animated scroll indicator
+
+The scrolling digits come from `PI_DIGITS` in `src/lib/constants.ts` — the first 1 000 digits of Pi.
+
+### WhatIsPi
+
+`src/components/sections/WhatIsPi.tsx` — Explains what Pi is. Contains:
+
+- An interactive circle visualization: drag a range slider to change the radius, and the displayed circle, diameter line, and circumference calculation all update in real time
+- Three info cards: **Es Irracional**, **Es Trascendente**, **Es Universal**
+
+### History
+
+`src/components/sections/History.tsx` — Scroll-driven timeline of Pi across human history. A progress line grows as you scroll using Framer Motion's `useScroll` + `useTransform`. Timeline entries:
+
+| Year | Civilization | Approximation |
+|---|---|---|
+| 2000 a.C. | Babilonios | 3.125 |
+| 1650 a.C. | Papiro de Rhind (Egipto) | 3.1605 |
+| 250 a.C. | Arquímedes | 3.1418 |
+| 480 d.C. | Zu Chongzhi | 355/113 |
+| 1706 | William Jones | π (símbolo) |
+| Actualidad | Supercomputadoras | 105 Trillones de dígitos |
+
+### MemoryGame
+
+`src/components/sections/MemoryGame.tsx` — An interactive Pi digit memory game. Players type decimal digits of Pi one at a time using the keyboard.
+
+**Game modes:**
+
+| Mode | Lives | Win condition |
+|---|---|---|
+| Normal | 3 | Type 50 correct digits |
+| Contra Reloj | Unlimited | Max score in 30 seconds |
+| Muerte Súbita | 1 | Survive as long as possible |
+
+**Feedback:**
+
+- Correct digit: green border flash, `playTypingBeep()` sound, +10 points
+- Wrong digit: red border flash, `playErrorSound()` sound, −1 life
+- Win: confetti burst via `canvas-confetti`, `playSuccessSound()`
+
+The game targets `PI_DIGITS.substring(1)` — the digits after the leading `3`, so the sequence starts `14159…`.
+
+### Visualizer
+
+`src/components/sections/Visualizer.tsx` — Renders the first 1 000 Pi digits as colored tiles. Two view modes:
+
+- **Matriz** — A responsive grid where each digit is a colored square. Each digit 0–9 has a distinct neon color defined in `DIGIT_COLORS` (`src/lib/constants.ts`). Hover a tile to see its position and digit value.
+- **Esfera** — The same digits arranged in a circle, each dot plotted at `angle = (i / 1000) * 360°`.
+
+Digit color mapping:
+
+| Digit | Color |
+|---|---|
+| 0 | `#FF3366` Hot Pink |
+| 1 | `#FF6633` Orange-Pink |
+| 2 | `#FFCC00` Yellow |
+| 3 | `#33FF66` Lime Green |
+| 4 | `#00FFFF` Cyan |
+| 5 | `#0099FF` Bright Blue |
+| 6 | `#6633FF` Purple |
+| 7 | `#CC33FF` Violet |
+| 8 | `#FFFFFF` White |
+| 9 | `#99FF33` Neon Green |
+
+### RealWorld
+
+`src/components/sections/RealWorld.tsx` — Six cards showing real-world applications of Pi: Ciencia Espacial, GPS y Satélites, Ondas y Señales, Arquitectura, Física Cuántica, Ríos y Naturaleza. Cards animate upward on scroll with staggered delays.
+
+## PiBot
+
+`src/components/PiBot.tsx` — A floating AI-style chatbot fixed to the bottom-right corner.
+
+**Behavior:**
+
+1. A circular button (`MessageCircle` icon) floats in the corner. Click to open.
+2. The chat panel slides in (`AnimatePresence` + Framer Motion).
+3. Four preset question buttons appear above the text input:
+   - ¿Qué es π?
+   - ¿Por qué es infinito?
+   - ¿Quién descubrió π?
+   - ¿Para qué sirve?
+4. Sending a message (via preset or free text) triggers a 1.5-second typing indicator with audible `playTypingBeep()` beeps.
+5. Responses are matched by substring against a hardcoded `RESPONSES` map. Unrecognized input receives the default response.
+
+<Note>
+PiBot has no backend. All responses are hardcoded in `src/components/PiBot.tsx`. There is no API call.
+</Note>
+
+**Response map:**
+
+| Question key | Response summary |
+|---|---|
+| `qué es π` | Defines Pi as the ratio of circumference to diameter |
+| `por qué es infinito` | Explains Pi is irrational — no repeating decimal pattern |
+| `quién descubrió π` | Traces history from Babylon to Euler's 1737 symbol |
+| `para qué sirve` | GPS, NASA, Wi-Fi signal processing, construction |
+| (default) | Encourages exploring the Desafío de Memoria |
+
+## Easter egg
+
+`src/components/EasterEgg.tsx` — An invisible component mounted at the app root. It listens to `keydown` events globally and tracks the last `TARGET.length` characters typed.
+
+Typing **`3.14159`** anywhere on the page (only digits and `.` are tracked) triggers:
+
+1. `playSuccessSound()` — two-tone ascending beep
+2. A 3-second dual confetti burst from both edges of the screen (colors: `#00D4FF`, `#B026FF`, `#ffffff`)
+3. An `alert()` message: *"¡Encontraste el Pi Moment! 🎉"*
+
+```tsx src/components/EasterEgg.tsx
+export function EasterEgg() {
+  const [keys, setKeys] = useState<string>("");
+  const TARGET = "3.14159";
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!/^[0-9.]$/.test(e.key)) return;
+      setKeys((prev) => {
+        const next = (prev + e.key).slice(-TARGET.length);
+        if (next === TARGET) triggerCelebration();
+        return next;
+      });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  return null;
+}
+```
+
+## Utility library
+
+The `src/lib/` directory contains three modules:
+
+| File | Purpose |
+|---|---|
+| `constants.ts` | `PI_DIGITS` (1 000 digits as a string) and `DIGIT_COLORS` (color map for 0–9) |
+| `audio.ts` | `Web Audio API` helpers: `playSuccessSound`, `playErrorSound`, `playTypingBeep` |
+| `utils.ts` | `cn()` class-merging utility (Tailwind + clsx) |

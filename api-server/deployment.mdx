@@ -1,0 +1,153 @@
+---
+title: 'Deployment'
+description: 'Build the API server with esbuild and run it in production.'
+keywords: ['deployment', 'esbuild', 'production', 'build', 'dist', 'node']
+---
+
+The API server compiles to a single CJS bundle at `dist/index.cjs` using esbuild. The bundle is self-contained and runs with `node dist/index.cjs`.
+
+## Build process
+
+The build script is `build.ts`, executed via `tsx`:
+
+```typescript build.ts
+import path from "path";
+import { fileURLToPath } from "url";
+import { build as esbuild } from "esbuild";
+import { rm, readFile } from "fs/promises";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// server deps to bundle to reduce openat(2) syscalls
+// which helps cold start times without risking some
+// packages that are not bundle compatible
+const allowlist = [
+  "@google/generative-ai",
+  "axios",
+  "connect-pg-simple",
+  "cors",
+  "date-fns",
+  "drizzle-orm",
+  "drizzle-zod",
+  "express",
+  "express-rate-limit",
+  "express-session",
+  "jsonwebtoken",
+  "memorystore",
+  "multer",
+  "nanoid",
+  "nodemailer",
+  "openai",
+  "passport",
+  "passport-local",
+  "pg",
+  "stripe",
+  "uuid",
+  "ws",
+  "xlsx",
+  "zod",
+  "zod-validation-error",
+];
+
+async function buildAll() {
+  const distDir = path.resolve(__dirname, "dist");
+  await rm(distDir, { recursive: true, force: true });
+
+  console.log("building server...");
+  const pkgPath = path.resolve(__dirname, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
+  const allDeps = [
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {}),
+  ];
+  const externals = allDeps.filter(
+    (dep) =>
+      !allowlist.includes(dep) &&
+      !(pkg.dependencies?.[dep]?.startsWith("workspace:")),
+  );
+
+  await esbuild({
+    entryPoints: [path.resolve(__dirname, "src/index.ts")],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: path.resolve(distDir, "index.cjs"),
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
+}
+
+buildAll().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+```
+
+## Running the build
+
+```bash
+pnpm --filter @workspace/api-server run build
+```
+
+The build clears `dist/` before each run, then produces `dist/index.cjs`.
+
+## What gets bundled vs. externalized
+
+The build script dynamically determines which packages to bundle by comparing `package.json` dependencies against an allowlist.
+
+**Bundled** — packages in the allowlist are inlined into `dist/index.cjs`:
+
+| Package | Reason |
+|---|---|
+| `express` | Core HTTP framework |
+| `cors` | CORS middleware |
+| `pg` | PostgreSQL driver |
+| `drizzle-orm` | ORM query builder |
+| `zod` | Runtime validation |
+| `drizzle-zod` | Drizzle ↔ Zod bridge |
+| `zod-validation-error` | Human-readable Zod errors |
+
+Bundling these packages reduces the number of file-system reads (`openat` syscalls) at startup, which improves cold start time.
+
+**Externalized** — workspace packages (`workspace:*` protocol) and any package not in the allowlist remain external. Node.js built-ins (`fs`, `path`, `http`, etc.) are always external because esbuild's `platform: "node"` setting excludes them automatically.
+
+<Note>
+Workspace packages (`@workspace/db`, `@workspace/api-zod`) are resolved at build time by pnpm and their source is inlined via the `workspace:*` protocol — they do not need to be in the allowlist.
+</Note>
+
+## Environment variables
+
+Set both variables before starting the server:
+
+| Variable | Example | Description |
+|---|---|---|
+| `PORT` | `3000` | TCP port to bind |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db` | PostgreSQL connection string |
+
+The server validates `PORT` at startup and exits immediately if it is missing or not a positive integer.
+
+## Running in production
+
+```bash
+# Set environment variables, then start the server
+PORT=3000 DATABASE_URL=postgres://user:pass@host:5432/db node dist/index.cjs
+```
+
+The bundle has no runtime dependency on TypeScript or `tsx` — only Node.js is required.
+
+<Tip>
+Use a process manager such as systemd or PM2 to restart the server on failure and manage logs in long-running production environments.
+</Tip>
+
+## Replit hosting
+
+When deploying on Replit, publishing the project automatically triggers the database migration step. You do not need to run migrations manually — the platform handles them as part of the publish workflow.
+
+<Info>
+For non-Replit deployments, run database migrations before starting the server. Refer to the [database documentation](/database/migrations) for migration commands.
+</Info>

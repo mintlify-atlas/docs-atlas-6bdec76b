@@ -1,0 +1,225 @@
+---
+title: 'TypeScript configuration'
+description: 'A deep-dive into the composite TypeScript project setup used across the EduLearn Hub monorepo.'
+---
+
+## Composite project setup
+
+Every package in the monorepo participates in a TypeScript composite build. This means:
+
+- **One typecheck command rules them all** — always run `pnpm run typecheck` from the root, never `tsc` inside a single package.
+- **Cross-package types resolve correctly** — `tsc --build` follows project references to build dependencies in the right order.
+- **Incremental builds** — `tsc` skips packages that haven't changed, making typechecks fast.
+
+## `tsconfig.base.json`
+
+All packages extend this shared base configuration:
+
+```json
+{
+  "compilerOptions": {
+    "isolatedModules": true,
+    "lib": ["es2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmitOnError": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": false,
+    "noImplicitReturns": true,
+    "noUnusedLocals": false,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "types": [],
+    "customConditions": ["workspace"]
+  }
+}
+```
+
+### Key settings explained
+
+<AccordionGroup>
+  <Accordion title="composite: true (implied by project references)">
+    Enables TypeScript's project references feature. Each package builds into an incremental output that downstream packages can consume without re-checking the full source. Required for `tsc --build` to work across the monorepo.
+  </Accordion>
+  <Accordion title="moduleResolution: bundler">
+    Uses the `bundler` resolution algorithm, which matches how esbuild and Vite resolve modules. This means TypeScript won't complain about bare specifiers or missing file extensions that a bundler handles automatically.
+  </Accordion>
+  <Accordion title="target: es2022 / lib: es2022">
+    Targets ES2022 syntax and includes ES2022 type definitions. This is appropriate since the runtime is Node.js 24, which has full ES2022 support.
+  </Accordion>
+  <Accordion title="isolatedModules: true">
+    Requires every file to be a valid module in isolation (i.e. no implicit globals). This ensures compatibility with single-file transpilers like esbuild and tsx that process one file at a time without full type information.
+  </Accordion>
+  <Accordion title="emitDeclarationOnly (set per package)">
+    `tsc` only emits `.d.ts` declaration files — not JavaScript. Actual JS bundling is handled by esbuild (for `api-server`) or Vite (for frontend apps). This keeps the typecheck step fast and avoids duplicate JS output.
+  </Accordion>
+  <Accordion title="customConditions: workspace">
+    Enables a custom `workspace` export condition in `package.json` `exports` fields. This lets workspace packages expose a TypeScript source path under the `workspace` condition while pointing to compiled `.d.ts` output under the default condition.
+  </Accordion>
+</AccordionGroup>
+
+## Root `tsconfig.json`
+
+The root config lists all packages as project references. `tsc --build` reads this file to discover the full dependency graph:
+
+```json
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    { "path": "./lib/db" },
+    { "path": "./lib/api-client-react" },
+    { "path": "./lib/api-zod" }
+  ]
+}
+```
+
+`files: []` ensures the root config itself compiles no source files — it is purely an aggregator for the `references` array.
+
+## Per-package `tsconfig.json` pattern
+
+Each package follows this pattern:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declarationDir": "dist"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../lib/db" }
+  ]
+}
+```
+
+The `references` array lists the other workspace packages this package imports from. `tsc --build` uses this to ensure dependencies are built first.
+
+## The `emitDeclarationOnly` pattern
+
+TypeScript is used **only** for type-checking and producing `.d.ts` files. JavaScript is produced by other tools:
+
+| Package | JS bundler |
+|---|---|
+| `artifacts/api-server` | esbuild (outputs `dist/index.cjs`) |
+| Frontend apps | Vite |
+| Scripts | tsx (runs `.ts` files directly, no build step) |
+
+This separation means:
+- `tsc` runs fast — it skips JS emit entirely.
+- The bundler (esbuild/Vite) handles tree-shaking, code splitting, and format conversion.
+- There is no risk of `tsc`-emitted JS conflicting with bundler output.
+
+<Note>
+  Because of `emitDeclarationOnly`, you must run `pnpm run typecheck` (not just check with your IDE) to produce the `.d.ts` files that downstream packages depend on. Without them, `tsc --build` will error on the first package that imports from a package that hasn't been built yet.
+</Note>
+
+## Always typecheck from the root
+
+<Warning>
+  **Never run `tsc` inside a single package directory.** If package A depends on package B and B's `.d.ts` files don't exist yet, `tsc` inside A will fail with module-not-found errors. Always use the root-level command:
+
+  ```bash
+  pnpm run typecheck
+  ```
+
+  This runs `tsc --build` which follows the `references` graph, builds packages in dependency order, and skips packages that are already up to date.
+</Warning>
+
+## Adding a new package to the project references graph
+
+<Steps>
+  <Step title="Create the package tsconfig.json">
+    In your new package directory, create a `tsconfig.json` that extends the base and sets `composite: true`:
+
+    ```json
+    {
+      "extends": "../../tsconfig.base.json",
+      "compilerOptions": {
+        "composite": true,
+        "emitDeclarationOnly": true,
+        "outDir": "dist",
+        "rootDir": "src"
+      },
+      "include": ["src"],
+      "references": []
+    }
+    ```
+  </Step>
+  <Step title="Add references to dependencies">
+    If your new package imports from other workspace packages, list them in the `references` array:
+
+    ```json
+    {
+      "references": [
+        { "path": "../../lib/db" },
+        { "path": "../../lib/api-zod" }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Register in the root tsconfig.json">
+    Add the new package to the `references` array in the root `tsconfig.json`:
+
+    ```json
+    {
+      "references": [
+        { "path": "./lib/db" },
+        { "path": "./lib/api-client-react" },
+        { "path": "./lib/api-zod" },
+        { "path": "./lib/my-new-package" }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Run typecheck to verify">
+    ```bash
+    pnpm run typecheck
+    ```
+
+    If the build succeeds, the new package is correctly wired into the dependency graph.
+  </Step>
+</Steps>
+
+## Common TypeScript errors
+
+<AccordionGroup>
+  <Accordion title="Cannot find module '@workspace/...' or its corresponding type declarations">
+    The dependency package hasn't been built yet — its `.d.ts` files don't exist.
+
+    **Fix:** Run `pnpm run typecheck` from the root to build all packages in dependency order.
+  </Accordion>
+  <Accordion title="Project references may not form a circular graph">
+    Two packages reference each other, creating a cycle.
+
+    **Fix:** Refactor shared code into a third package that both can depend on without creating a cycle.
+  </Accordion>
+  <Accordion title="Referenced project must have setting composite: true">
+    A package is listed in a `references` array but its `tsconfig.json` does not set `composite: true`.
+
+    **Fix:** Add `"composite": true` to the `compilerOptions` of the referenced package's `tsconfig.json`.
+  </Accordion>
+  <Accordion title="File is not under 'rootDir'">
+    A source file is being imported from outside the declared `rootDir`.
+
+    **Fix:** Adjust `rootDir` in the package's `tsconfig.json`, or move the file into the correct directory. Cross-package imports should go through the `references` mechanism, not direct file paths.
+  </Accordion>
+  <Accordion title="isolatedModules: Cannot re-export a type">
+    A type import is being re-exported with `export { Foo }` instead of `export type { Foo }`.
+
+    **Fix:** Use `export type { Foo }` for type-only re-exports. This is required when `isolatedModules: true` is set, because single-file transpilers cannot determine whether `Foo` is a value or a type without full type information.
+  </Accordion>
+</AccordionGroup>

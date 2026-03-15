@@ -1,0 +1,118 @@
+---
+title: 'Local development setup'
+description: 'Get your local development environment up and running for EduLearn Hub.'
+---
+
+## Prerequisites
+
+Before you begin, make sure you have the following installed:
+
+<CardGroup cols={2}>
+  <Card title="Node.js 24" icon="node-js">
+    The workspace requires Node.js version 24. Download from [nodejs.org](https://nodejs.org).
+  </Card>
+  <Card title="pnpm" icon="box">
+    The only supported package manager. Install globally with npm:
+
+    ```bash
+    npm install -g pnpm
+    ```
+  </Card>
+</CardGroup>
+
+<Warning>
+  The workspace enforces pnpm-only via a `preinstall` hook. Running `npm install` or `yarn` will fail with the message `Use pnpm instead`.
+</Warning>
+
+## Cloning the repository
+
+```bash
+git clone <repository-url>
+cd artifacts-monorepo
+```
+
+## Installing dependencies
+
+From the repository root, run:
+
+```bash
+pnpm install
+```
+
+This installs dependencies across all workspace packages in one pass. The `preinstall` hook also removes any stray `package-lock.json` or `yarn.lock` files automatically.
+
+### `.npmrc` configuration
+
+The repository ships with an `.npmrc` that sets two options:
+
+```ini
+auto-install-peers=false
+strict-peer-dependencies=false
+```
+
+This prevents pnpm from auto-installing peer dependencies and relaxes strict peer-dependency checking, which keeps installs clean across the diverse package ecosystem in the monorepo.
+
+## Environment variables
+
+Create a `.env` file (or set these in your shell) before starting the API server:
+
+| Variable | Description | Example |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/edulearn` |
+| `PORT` | Port for the API server | `3000` |
+
+```bash
+DATABASE_URL=postgresql://user:pass@localhost:5432/edulearn
+PORT=3000
+```
+
+<Info>
+  `DATABASE_URL` is required by the Drizzle ORM config (`drizzle.config.ts`). Without it the `@workspace/db` package will not connect to the database.
+</Info>
+
+## Recommended IDE setup
+
+VS Code with the built-in TypeScript language server is recommended. Because the project uses TypeScript composite builds with project references, open the **repository root** as your workspace — not a subdirectory — so that the language server can resolve cross-package types correctly.
+
+<Tip>
+  If you see "cannot find module '@workspace/...'" errors in VS Code, run `pnpm run typecheck` once from the root to emit the initial `.d.ts` files. The language server picks them up automatically after that.
+</Tip>
+
+## Running packages in development mode
+
+Each application can be started individually using pnpm's `--filter` flag.
+
+<Tabs>
+  <Tab title="API server">
+    ```bash
+    pnpm --filter @workspace/api-server run dev
+    ```
+
+    Starts the Express 5 API server. Reads `PORT` from the environment (defaults vary by config). The server mounts all routes under `/api`.
+  </Tab>
+  <Tab title="Pi Day app">
+    ```bash
+    pnpm --filter @workspace/pi-day run dev
+    ```
+
+    Starts the Pi Day frontend application in development mode with hot-module replacement.
+  </Tab>
+  <Tab title="Mockup sandbox">
+    ```bash
+    pnpm --filter @workspace/mockup-sandbox run dev
+    ```
+
+    Starts the mockup sandbox for UI prototyping.
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Scripts" icon="terminal" href="/development/scripts">
+    Learn about root-level build scripts and utility scripts.
+  </Card>
+  <Card title="TypeScript setup" icon="code" href="/development/typescript">
+    Understand the composite TypeScript project configuration.
+  </Card>
+</CardGroup>

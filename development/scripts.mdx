@@ -1,0 +1,142 @@
+---
+title: 'Scripts'
+description: 'Root-level build scripts, utility scripts, and database scripts for EduLearn Hub.'
+---
+
+## Root package scripts
+
+The root `package.json` defines three top-level scripts that operate across the entire workspace:
+
+| Script | Command | Description |
+|---|---|---|
+| `build` | `pnpm run typecheck && pnpm -r --if-present run build` | Runs typecheck first, then recursively builds all packages that define a `build` script |
+| `typecheck` | `pnpm run typecheck:libs && pnpm -r --filter ...` | Full typecheck: libs first, then all artifacts and scripts |
+| `typecheck:libs` | `tsc --build` | Typechecks only the `lib/` packages using project references |
+
+```bash
+# Build everything (typecheck + all package builds)
+pnpm run build
+
+# Typecheck the entire workspace
+pnpm run typecheck
+
+# Typecheck only lib packages
+pnpm run typecheck:libs
+```
+
+<Note>
+  `pnpm run build` always runs typecheck before building. If typechecking fails, the build stops immediately. This ensures no broken JS bundles are produced.
+</Note>
+
+## Utility scripts — `@workspace/scripts`
+
+The `scripts/` directory is a dedicated workspace package (`@workspace/scripts`) for one-off and operational scripts. Each `.ts` file in `scripts/src/` is a runnable script with a corresponding entry in `scripts/package.json`.
+
+### Running a script
+
+```bash
+pnpm --filter @workspace/scripts run <script-name>
+```
+
+### Example: `hello.ts`
+
+The `hello.ts` script is the canonical example:
+
+```typescript
+console.log("Hello from @workspace/scripts");
+```
+
+It is registered in `scripts/package.json`:
+
+```json
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:"
+  }
+}
+```
+
+Run it with:
+
+```bash
+pnpm --filter @workspace/scripts run hello
+# Hello from @workspace/scripts
+```
+
+### Adding a new script
+
+<Steps>
+  <Step title="Create the script file">
+    Add a new TypeScript file in `scripts/src/`:
+
+    ```typescript
+    // scripts/src/myScript.ts
+    console.log("Running myScript");
+    ```
+  </Step>
+  <Step title="Register it in package.json">
+    Add a corresponding npm script entry to `scripts/package.json`:
+
+    ```json
+    {
+      "scripts": {
+        "hello": "tsx ./src/hello.ts",
+        "my-script": "tsx ./src/myScript.ts"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Run the script">
+    ```bash
+    pnpm --filter @workspace/scripts run my-script
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Scripts can import any workspace package by adding it as a dependency in `scripts/package.json`. For example, to use the database layer, add `"@workspace/db": "workspace:*"` to the `dependencies` field.
+</Tip>
+
+## Database scripts
+
+The `@workspace/db` package exposes Drizzle Kit scripts for managing the database schema in development.
+
+| Script | Command | Description |
+|---|---|---|
+| `push` | `pnpm --filter @workspace/db run push` | Sync the Drizzle schema to the development database |
+| `push-force` | `pnpm --filter @workspace/db run push-force` | Force-push the schema, bypassing safety checks |
+
+```bash
+# Normal development schema sync
+pnpm --filter @workspace/db run push
+
+# Force push (use with caution)
+pnpm --filter @workspace/db run push-force
+```
+
+<Warning>
+  `push-force` bypasses Drizzle Kit's safety prompts. Only use it when you are certain about the schema changes and have a backup of any data you cannot lose. Production migrations are handled separately during deployment.
+</Warning>
+
+## Codegen script
+
+To regenerate the React Query hooks and Zod schemas from the OpenAPI spec:
+
+```bash
+pnpm --filter @workspace/api-spec run codegen
+```
+
+This runs `orval --config ./orval.config.ts` and writes fresh output to:
+- `lib/api-client-react/src/generated/` — React Query hooks and fetch client
+- `lib/api-zod/src/generated/` — Zod schemas
+
+See the [Codegen](/development/codegen) page for the full workflow.

@@ -1,97 +1,75 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "EduLearn Hub"
+description: "A full-stack educational platform monorepo built with Express 5, PostgreSQL, and React — featuring an OpenAPI-driven API server, generated client libraries, and interactive learning experiences."
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your local environment running in minutes with pnpm and the dev server.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the monorepo structure, packages, and how they connect.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore the REST endpoints, request/response schemas, and generated clients.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Frontend Apps" icon="browser" href="/frontend/pi-day">
+    Discover the interactive Pi Day explorer and the component mockup sandbox.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What is EduLearn Hub?
 
-Everything you need to create world-class documentation.
+EduLearn Hub is a **TypeScript monorepo** that serves as the foundation for building interactive educational web applications. It brings together a production-ready backend, a type-safe database layer, auto-generated client libraries, and rich React frontends — all managed in a single pnpm workspace.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Info>
+The platform is built on [pnpm workspaces](https://pnpm.io/workspaces) with TypeScript composite projects, ensuring fast incremental builds and strong type safety across every package boundary.
+</Info>
 
-## Need inspiration?
+## Core packages
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={3}>
+  <Card title="api-server" icon="server" href="/api-server/overview">
+    Express 5 REST API server with Zod-validated endpoints and CORS support.
+  </Card>
+  <Card title="@workspace/db" icon="database" href="/database/overview">
+    Drizzle ORM database layer with PostgreSQL, schema definitions, and migrations.
+  </Card>
+  <Card title="api-spec" icon="file-code" href="/development/codegen">
+    OpenAPI 3.1 specification that drives Orval code generation for both client and server.
+  </Card>
+  <Card title="api-client-react" icon="react" href="/client-libraries/api-client-react">
+    Generated React Query hooks and fetch client for consuming the API.
+  </Card>
+  <Card title="api-zod" icon="shield-check" href="/client-libraries/api-zod">
+    Generated Zod schemas for runtime request and response validation.
+  </Card>
+  <Card title="pi-day" icon="infinity" href="/frontend/pi-day">
+    Interactive Pi Day web app with visualizations, memory games, and an AI chatbot.
+  </Card>
+</CardGroup>
+
+## Key features
+
+- **Type-safe end-to-end** — TypeScript project references keep cross-package imports validated at build time
+- **OpenAPI-first** — The single `openapi.yaml` spec generates both Zod validators (server-side) and React Query hooks (client-side) via Orval
+- **Drizzle ORM** — Lightweight, SQL-transparent database layer with schema-first migrations
+- **Express 5** — Modern async-friendly API server with structured routing and middleware
+- **esbuild** — Fast production bundling producing a single CJS bundle for the API server
+- **Interactive frontends** — React apps built with Tailwind CSS, Radix UI, Framer Motion, and TanStack Query
+
+## Tech stack
+
+| Layer | Technology |
+|-------|-----------|
+| Package manager | pnpm workspaces |
+| Language | TypeScript 5.9 |
+| API framework | Express 5 |
+| Database ORM | Drizzle ORM |
+| Database | PostgreSQL |
+| Validation | Zod v4 |
+| API codegen | Orval |
+| Frontend | React 18 + Vite |
+| UI components | Radix UI + Tailwind CSS |
+| State management | TanStack Query v5 |
+| Bundler | esbuild |

@@ -1,0 +1,91 @@
+---
+title: 'Health check'
+description: 'GET /api/healthz — returns server health status.'
+keywords: ['health', 'healthz', 'health check', 'status', 'api']
+---
+
+Returns the current health status of the server. Use this endpoint to verify that the API server is running and reachable.
+
+## Endpoint
+
+```
+GET /api/healthz
+```
+
+## Request parameters
+
+This endpoint accepts no parameters.
+
+## Response
+
+**Status: `200 OK`**
+
+<ResponseField name="status" type="string" required>
+  Health status of the server. Always `"ok"` when the server is running.
+</ResponseField>
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X GET http://localhost:3000/api/healthz
+```
+
+```typescript fetch
+const response = await fetch('/api/healthz');
+const data = await response.json();
+console.log(data); // { status: 'ok' }
+```
+
+```typescript healthCheck()
+import { healthCheck } from '@workspace/api-client-react';
+
+const data = await healthCheck();
+console.log(data); // { status: 'ok' }
+```
+
+```tsx useHealthCheck()
+import { useHealthCheck } from '@workspace/api-client-react';
+
+export function HealthStatus() {
+  const { data, isLoading, isError } = useHealthCheck();
+
+  if (isLoading) return <span>Checking...</span>;
+  if (isError) return <span>Unavailable</span>;
+
+  return <span>Status: {data?.status}</span>;
+}
+```
+
+</CodeGroup>
+
+## Response example
+
+```json 200
+{
+  "status": "ok"
+}
+```
+
+## Implementation
+
+The route handler validates the response using the `HealthCheckResponse` Zod schema before sending it to the client:
+
+```typescript src/routes/health.ts
+import { Router, type IRouter } from "express";
+import { HealthCheckResponse } from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+router.get("/healthz", (_req, res) => {
+  const data = HealthCheckResponse.parse({ status: "ok" });
+  res.json(data);
+});
+
+export default router;
+```
+
+<Note>
+`HealthCheckResponse.parse()` validates the response shape at runtime and strips any unexpected fields before the response is sent. See [Schemas](/api-reference/schemas) for the full schema reference.
+</Note>

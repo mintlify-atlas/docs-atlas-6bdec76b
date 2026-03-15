@@ -1,0 +1,96 @@
+---
+title: 'Overview'
+description: 'The @workspace/db package provides the PostgreSQL connection pool and Drizzle ORM client used by the entire EduLearn Hub backend.'
+keywords: ['database', 'drizzle', 'postgresql', 'pg', 'drizzle-zod', 'connection pool']
+---
+
+The `@workspace/db` package is the single database access layer for EduLearn Hub. It creates a `pg.Pool` connection, wraps it with Drizzle ORM, and re-exports the full schema so every other package imports from one place.
+
+<CardGroup cols={2}>
+  <Card title="Schema" icon="table" href="/database/schema">
+    How tables are defined with Drizzle ORM and `drizzle-zod`.
+  </Card>
+  <Card title="Migrations" icon="arrows-rotate" href="/database/migrations">
+    Pushing schema changes to PostgreSQL in development and production.
+  </Card>
+</CardGroup>
+
+## Package details
+
+| Field | Value |
+|---|---|
+| Package name | `@workspace/db` |
+| Entry point | `src/index.ts` |
+| Schema | `src/schema/index.ts` |
+
+## Exports
+
+The package has two export paths:
+
+| Export path | What it exports |
+|---|---|
+| `.` (`@workspace/db`) | `pool`, `db`, and everything from `./schema` |
+| `./schema` (`@workspace/db/schema`) | Schema tables, insert schemas, and types only |
+
+Most packages should import from `@workspace/db` directly. Use the `@workspace/db/schema` path only when you need schema types without importing the database connection (e.g., in packages that run at build time).
+
+## How the connection works
+
+`src/index.ts` reads `DATABASE_URL` from the environment, creates a `pg.Pool`, and passes it to `drizzle()`. The resulting `db` instance is a fully typed Drizzle ORM client.
+
+```typescript src/index.ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "./schema";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
+
+export * from "./schema";
+```
+
+<Warning>
+The module throws at import time if `DATABASE_URL` is not set. Any process that imports `@workspace/db` will exit immediately without a valid connection string.
+</Warning>
+
+## `DATABASE_URL` environment variable
+
+The connection string must be a standard PostgreSQL URI:
+
+```text
+postgresql://user:password@host:port/database
+```
+
+<Info>
+In the Replit environment, `DATABASE_URL` is provisioned automatically when a PostgreSQL database is attached to the project. When running locally you must export it yourself before starting any process that imports `@workspace/db`.
+</Info>
+
+## Scripts
+
+```bash
+# Push schema to the database (development)
+pnpm --filter @workspace/db run push
+
+# Force-push schema, overwriting any breaking changes
+pnpm --filter @workspace/db run push-force
+```
+
+See the [Migrations](/database/migrations) page for full details on when to use each command.
+
+## Dependencies
+
+| Package | Purpose |
+|---|---|
+| `drizzle-orm` | Query builder and ORM runtime |
+| `pg` | PostgreSQL client (node-postgres) |
+| `drizzle-zod` | Auto-generates Zod insert schemas from Drizzle tables |
+| `drizzle-kit` | CLI for schema push and migration generation (dev only) |
+| `zod` | Schema validation runtime |

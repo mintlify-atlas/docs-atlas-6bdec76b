@@ -1,0 +1,133 @@
+---
+title: 'Schema'
+description: 'How database tables are defined in @workspace/db using Drizzle ORM and drizzle-zod, and how to add a new table.'
+keywords: ['schema', 'drizzle', 'pgTable', 'drizzle-zod', 'insert schema', 'zod', 'postgresql']
+---
+
+All table definitions live in `src/schema/` inside `@workspace/db`. The file `src/schema/index.ts` re-exports every model so the rest of the codebase only ever imports from `@workspace/db`.
+
+## How the schema is organized
+
+Each table is defined in its own file under `src/schema/`:
+
+```text
+lib/db/src/schema/
+├── index.ts        # Re-exports all models — add one line per table file
+├── posts.ts        # Example: posts table (not yet created)
+└── ...             # One file per table
+```
+
+`src/schema/index.ts` collects every model with a single re-export per file:
+
+```typescript src/schema/index.ts
+// Export your models here. Add one export per file
+// export * from "./posts";
+//
+// Each model/table should ideally be split into different files.
+// Each model/table should define a Drizzle table, insert schema, and types:
+//
+//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
+//   import { createInsertSchema } from "drizzle-zod";
+//   import { z } from "zod/v4";
+//
+//   export const postsTable = pgTable("posts", {
+//     id: serial("id").primaryKey(),
+//     title: text("title").notNull(),
+//   });
+//
+//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
+//   export type InsertPost = z.infer<typeof insertPostSchema>;
+//   export type Post = typeof postsTable.$inferSelect;
+
+export {}
+```
+
+<Note>
+The schema is currently an empty scaffold — no tables have been defined yet. The comments above show exactly the pattern to follow when adding your first table.
+</Note>
+
+## The `drizzle-zod` integration
+
+`drizzle-zod` reads a Drizzle table definition and automatically produces a Zod schema for insert operations. This means you define the table once and get both the ORM query builder and a validated insert schema for free.
+
+```typescript
+import { createInsertSchema } from "drizzle-zod";
+
+// Automatically mirrors every column's type and constraints
+export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
+
+// Use with route handlers or API validation
+const parsed = insertPostSchema.parse(req.body);
+await db.insert(postsTable).values(parsed);
+```
+
+<Tip>
+Omit auto-generated columns (like `id` or `createdAt`) from insert schemas so callers cannot supply them manually. Drizzle will fill them in from column defaults.
+</Tip>
+
+## Adding a new table
+
+<Steps>
+  <Step title="Create the model file">
+    Add a new file under `src/schema/`. Name it after the table (e.g., `src/schema/courses.ts`).
+
+    ```typescript src/schema/courses.ts
+    import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+    import { createInsertSchema } from "drizzle-zod";
+    import { z } from "zod/v4";
+
+    export const coursesTable = pgTable("courses", {
+      id: serial("id").primaryKey(),
+      title: text("title").notNull(),
+      description: text("description"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+    });
+
+    export const insertCourseSchema = createInsertSchema(coursesTable).omit({
+      id: true,
+      createdAt: true,
+    });
+
+    export type InsertCourse = z.infer<typeof insertCourseSchema>;
+    export type Course = typeof coursesTable.$inferSelect;
+    ```
+
+    Each model file exports:
+    - `<name>Table` — the Drizzle table definition
+    - `insert<Name>Schema` — a Zod schema for validated inserts
+    - `Insert<Name>` — the TypeScript type for an insert payload
+    - `<Name>` — the TypeScript type for a selected row
+  </Step>
+  <Step title="Re-export from index.ts">
+    Open `src/schema/index.ts` and add one line:
+
+    ```typescript src/schema/index.ts
+    export * from "./courses";
+    ```
+
+    After this change, `coursesTable`, `insertCourseSchema`, `InsertCourse`, and `Course` are all available from `@workspace/db`.
+  </Step>
+  <Step title="Push the schema to the database">
+    Run the push command to apply the new table to your local database:
+
+    ```bash
+    pnpm --filter @workspace/db run push
+    ```
+
+    See [Migrations](/database/migrations) for details on push vs. force-push and production deployments.
+  </Step>
+  <Step title="Use the table in the API server">
+    Import from `@workspace/db` in any route handler:
+
+    ```typescript
+    import { db, coursesTable, insertCourseSchema } from "@workspace/db";
+
+    // Insert a validated row
+    const data = insertCourseSchema.parse(req.body);
+    const [course] = await db.insert(coursesTable).values(data).returning();
+
+    // Query all rows
+    const courses = await db.select().from(coursesTable);
+    ```
+  </Step>
+</Steps>

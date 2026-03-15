@@ -1,0 +1,341 @@
+---
+title: 'Package catalog'
+description: 'Every package in the monorepo: its role, entry points, exports, and dependency relationships.'
+keywords: ['packages', 'monorepo', 'api-server', 'db', 'api-spec', 'api-zod', 'api-client-react', 'pi-day', 'mockup-sandbox', 'scripts']
+---
+
+The monorepo contains eight packages split across two top-level directories.
+
+```text
+artifacts-monorepo/
+├── artifacts/
+│   ├── api-server/        @workspace/api-server
+│   ├── mockup-sandbox/    @workspace/mockup-sandbox
+│   └── pi-day/            @workspace/pi-day
+├── lib/
+│   ├── api-client-react/  @workspace/api-client-react
+│   ├── api-spec/          @workspace/api-spec
+│   ├── api-zod/           @workspace/api-zod
+│   └── db/                @workspace/db
+└── scripts/               @workspace/scripts
+```
+
+## Dependency graph
+
+```text
+@workspace/pi-day
+  └── @workspace/api-client-react
+        └── (peer) react >=18, @tanstack/react-query
+
+@workspace/api-server
+  ├── @workspace/db
+  │     └── drizzle-orm, pg
+  └── @workspace/api-zod
+        └── zod
+
+@workspace/api-spec
+  └── (codegen target) → @workspace/api-client-react
+                       → @workspace/api-zod
+
+@workspace/mockup-sandbox   (no workspace deps)
+@workspace/scripts          (no workspace deps by default)
+```
+
+<Info>
+Packages in `lib/` are consumed by other packages. Packages in `artifacts/` are deployed and never imported by siblings. `@workspace/api-spec` is unusual — it has no runtime consumers, but drives code generation into two sibling lib packages.
+</Info>
+
+---
+
+## `@workspace/api-server`
+
+**Path:** `artifacts/api-server/`  
+**Type:** Deployable Express 5 API server
+
+<CardGroup cols={2}>
+  <Card title="Entry" icon="play">
+    `src/index.ts` — reads `PORT`, creates the HTTP server, starts Express.
+  </Card>
+  <Card title="App setup" icon="settings">
+    `src/app.ts` — mounts CORS, JSON/urlencoded body parsers, routes at `/api`.
+  </Card>
+  <Card title="Routes" icon="route">
+    `src/routes/index.ts` mounts sub-routers. `src/routes/health.ts` exposes `GET /api/healthz`.
+  </Card>
+  <Card title="Build output" icon="package">
+    esbuild CJS bundle → `dist/index.cjs`. Run via `tsx ./build.ts`.
+  </Card>
+</CardGroup>
+
+**Scripts:**
+
+| Script | Command | Purpose |
+|---|---|---|
+| `dev` | `NODE_ENV=development tsx ./src/index.ts` | Dev server with live TypeScript execution |
+| `build` | `tsx ./build.ts` | Production esbuild CJS bundle |
+| `typecheck` | `tsc -p tsconfig.json --noEmit` | Type-check only (no emit) |
+
+**Dependencies:** `@workspace/db`, `@workspace/api-zod`, `express ^5`, `cors ^2`, `cookie-parser ^1.4`, `drizzle-orm`
+
+---
+
+## `@workspace/db`
+
+**Path:** `lib/db/`  
+**Type:** Database layer (Drizzle ORM + PostgreSQL)
+
+Exports a configured Drizzle client instance and all schema models. Two export paths:
+
+```json
+// Consumed as:
+import { db, pool } from '@workspace/db';          // client + pool
+import { schema }   from '@workspace/db/schema';   // schema models only
+```
+
+**Key files:**
+
+| File | Purpose |
+|---|---|
+| `src/index.ts` | Creates `pg.Pool` from `DATABASE_URL`, initialises Drizzle, exports schema |
+| `src/schema/index.ts` | Barrel re-export of all table definitions |
+| `src/schema/<model>.ts` | Individual Drizzle table definitions with `drizzle-zod` insert schemas |
+| `drizzle.config.ts` | Drizzle Kit config — reads `DATABASE_URL`, points to `src/schema/index.ts` |
+
+```typescript
+// lib/db/drizzle.config.ts
+import { defineConfig } from "drizzle-kit";
+import path from "path";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL, ensure the database is provisioned");
+}
+
+export default defineConfig({
+  schema: path.join(__dirname, "./src/schema/index.ts"),
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
+```
+
+**Schema migrations:**
+
+```bash
+# Development: push schema directly (no migration files)
+pnpm --filter @workspace/db run push
+
+# If push is blocked by existing data
+pnpm --filter @workspace/db run push-force
+```
+
+<Warning>
+`push-force` drops and recreates conflicting tables. Do not use it against a database with data you need to keep.
+</Warning>
+
+---
+
+## `@workspace/api-spec`
+
+**Path:** `lib/api-spec/`  
+**Type:** OpenAPI specification + Orval codegen config
+
+This package owns the single source of truth for all API contracts. It has no runtime exports — its sole purpose is to drive code generation.
+
+**Key files:**
+
+| File | Purpose |
+|---|---|
+| `openapi.yaml` | OpenAPI 3.1 specification for the entire API |
+| `orval.config.ts` | Orval configuration — two output targets |
+
+The Orval config defines two named output targets:
+
+```typescript
+// lib/api-spec/orval.config.ts
+export default defineConfig({
+  "api-client-react": {
+    input: { target: "./openapi.yaml" },
+    output: {
+      workspace: apiClientReactSrc,   // lib/api-client-react/src
+      target: "generated",
+      client: "react-query",
+      mode: "split",
+      baseUrl: "/api",
+      clean: true,
+      prettier: true,
+      override: {
+        mutator: {
+          path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
+          name: "customFetch",
+        },
+      },
+    },
+  },
+  zod: {
+    input: { target: "./openapi.yaml" },
+    output: {
+      workspace: apiZodSrc,           // lib/api-zod/src
+      client: "zod",
+      target: "generated",
+      mode: "split",
+      clean: true,
+      prettier: true,
+    },
+  },
+});
+```
+
+**Run codegen:**
+
+```bash
+pnpm --filter @workspace/api-spec run codegen
+```
+
+---
+
+## `@workspace/api-zod`
+
+**Path:** `lib/api-zod/`  
+**Type:** Generated Zod schemas (do not edit manually)
+
+All files under `src/generated/` are overwritten by `codegen`. The package re-exports them via `src/index.ts`.
+
+**Example generated output:**
+
+```typescript
+// lib/api-zod/src/generated/api.ts
+// Generated by orval v8.5.3 — do not edit manually.
+import * as zod from "zod";
+
+/**
+ * Returns server health status
+ * @summary Health check
+ */
+export const HealthCheckResponse = zod.object({
+  status: zod.string(),
+});
+```
+
+**Consumed by:** `@workspace/api-server` (response validation in route handlers)
+
+---
+
+## `@workspace/api-client-react`
+
+**Path:** `lib/api-client-react/`  
+**Type:** Generated React Query hooks + fetch client (do not edit manually)
+
+Files under `src/generated/` are overwritten by `codegen`. The hand-authored `src/custom-fetch.ts` is preserved across runs (Orval only writes to `src/generated/`).
+
+**Exports (`src/index.ts`):**
+
+| Export | Type | Description |
+|---|---|---|
+| `useHealthCheck` | React hook | TanStack Query hook for `GET /api/healthz` |
+| `healthCheck` | async function | Plain fetch wrapper (no React dependency) |
+| `getHealthCheckQueryKey` | function | Returns the stable query key tuple |
+| `getHealthCheckQueryOptions` | function | Returns full `UseQueryOptions` object |
+
+**Example usage in a React component:**
+
+```typescript
+import { useHealthCheck } from '@workspace/api-client-react';
+
+function StatusBadge() {
+  const { data, isLoading, isError } = useHealthCheck();
+
+  if (isLoading) return <span>Loading…</span>;
+  if (isError)   return <span>Unavailable</span>;
+
+  return <span>{data?.status}</span>;
+}
+```
+
+**`customFetch` overview:**
+
+`src/custom-fetch.ts` is the hand-authored fetch adapter injected into every generated hook. It:
+
+- Negotiates `Content-Type` and `Accept` headers automatically.
+- Strips BOM characters from responses.
+- Throws typed `ApiError` instances (with `.status`, `.statusText`, `.data`) on non-2xx responses.
+- Throws `ResponseParseError` when JSON parsing fails.
+
+**Peer dependencies:** `react >=18`, `@tanstack/react-query ^5`
+
+---
+
+## `@workspace/mockup-sandbox`
+
+**Path:** `artifacts/mockup-sandbox/`  
+**Type:** Component preview / design sandbox (Vite + React)
+
+A standalone Vite application for previewing and iterating on UI components in isolation. It has a full set of shadcn/ui primitives (Radix UI) and does not depend on any `@workspace/` lib packages.
+
+**Scripts:**
+
+| Script | Command |
+|---|---|
+| `dev` | `vite dev` |
+| `build` | `vite build` |
+| `preview` | `vite preview` |
+| `typecheck` | `tsc -p tsconfig.json --noEmit` |
+
+**Notable dependencies:** Radix UI (full set), Framer Motion, Tailwind CSS v4, `react-hook-form`, `recharts`, shadcn/ui utilities (`class-variance-authority`, `clsx`, `tailwind-merge`).
+
+---
+
+## `@workspace/pi-day`
+
+**Path:** `artifacts/pi-day/`  
+**Type:** Pi Day educational web application (Vite + React)
+
+A deployable React application with routing (`wouter`), animations (`framer-motion`), and live backend connectivity via `@workspace/api-client-react`. This is the primary end-user-facing artifact in the monorepo.
+
+**Scripts:**
+
+| Script | Command |
+|---|---|
+| `dev` | `vite --config vite.config.ts --host 0.0.0.0` |
+| `build` | `vite build --config vite.config.ts` |
+| `serve` | `vite preview --config vite.config.ts --host 0.0.0.0` |
+| `typecheck` | `tsc -p tsconfig.json --noEmit` |
+
+**Workspace dependencies:** `@workspace/api-client-react`
+
+**Notable dependencies:** `wouter` (routing), `framer-motion`, `canvas-confetti`, Radix UI (full set), Tailwind CSS v4, `@tanstack/react-query`.
+
+---
+
+## `@workspace/scripts`
+
+**Path:** `scripts/`  
+**Type:** Utility scripts package
+
+Each file in `src/` is a standalone TypeScript script with a corresponding entry in `package.json` scripts. Scripts are run directly with `tsx` — no build step required.
+
+**Run a script:**
+
+```bash
+pnpm --filter @workspace/scripts run <script-name>
+
+# Example
+pnpm --filter @workspace/scripts run hello
+```
+
+**Adding a new script:**
+
+1. Create `scripts/src/my-script.ts`.
+2. Add an entry to `scripts/package.json`:
+   ```json
+   {
+     "scripts": {
+       "my-script": "tsx ./src/my-script.ts"
+     }
+   }
+   ```
+3. If the script needs database access, add `@workspace/db` as a dependency in `scripts/package.json` and add a `references` entry to `scripts/tsconfig.json`.
+
+<Tip>
+Scripts can import any workspace package. Just add the package as a dependency in `scripts/package.json` and list it in `scripts/tsconfig.json` references — then `pnpm install` to wire up the workspace symlink.
+</Tip>

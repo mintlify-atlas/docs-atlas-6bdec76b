@@ -1,0 +1,178 @@
+---
+title: 'Custom fetch'
+description: 'A typed wrapper around the Fetch API used internally by the generated React Query hooks in @workspace/api-client-react.'
+keywords: ['fetch', 'http client', 'custom fetch', 'api error', 'request']
+---
+
+`custom-fetch.ts` is a typed wrapper around the browser Fetch API. It handles response parsing, error construction, and content-type negotiation. The generated hooks in `@workspace/api-client-react` call `customFetch` automatically — you rarely need to call it directly.
+
+## Full source
+
+```typescript src/custom-fetch.ts
+export type CustomFetchOptions = RequestInit & {
+  responseType?: "json" | "text" | "blob" | "auto";
+};
+
+export type ErrorType<T = unknown> = ApiError<T>;
+
+export type BodyType<T> = T;
+
+export async function customFetch<T = unknown>(
+  input: RequestInfo | URL,
+  options: CustomFetchOptions = {},
+): Promise<T>
+```
+
+<Note>
+`custom-fetch.ts` lives at `src/custom-fetch.ts` inside `@workspace/api-client-react`. It is not auto-generated and can be modified to add global behaviour such as authentication headers or a base URL prefix.
+</Note>
+
+## `customFetch<T>`
+
+The core function. It extends the standard `fetch` signature with typed response parsing and structured error handling.
+
+```typescript
+export async function customFetch<T = unknown>(
+  input: RequestInfo | URL,
+  options: CustomFetchOptions = {},
+): Promise<T>
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `input` | `RequestInfo \| URL` | The request URL or a `Request` object. Relative paths such as `/api/healthz` are resolved against the current origin. |
+| `options` | `CustomFetchOptions` | All standard `RequestInit` fields plus an optional `responseType`. |
+| `options.responseType` | `"json" \| "text" \| "blob" \| "auto"` | How to parse a successful response body. Defaults to `"auto"`, which inspects the `Content-Type` header. |
+
+**Returns** `Promise<T>` — the parsed response body cast to `T`.
+
+**Throws** `ApiError` for any non-`2xx` response, or `ResponseParseError` if a JSON body cannot be parsed.
+
+### Response type behaviour
+
+| `responseType` | Behaviour |
+|---|---|
+| `"auto"` (default) | Inspects `Content-Type`. JSON types → parsed as JSON; text types → returned as string; everything else → returned as `Blob`. |
+| `"json"` | Always parse as JSON. Sets `Accept: application/json, application/problem+json` if not already present. |
+| `"text"` | Always read as string. |
+| `"blob"` | Always read as `Blob`. Throws `TypeError` in runtimes without `Blob` support. |
+
+## `ErrorType<T>`
+
+`ErrorType<T>` is the error type used throughout the generated hooks.
+
+```typescript
+export type ErrorType<T = unknown> = ApiError<T>;
+```
+
+It aliases `ApiError<T>`, which is a concrete class containing structured information about the failed request:
+
+```typescript
+export class ApiError<T = unknown> extends Error {
+  readonly name = "ApiError";
+  readonly status: number;       // HTTP status code
+  readonly statusText: string;   // HTTP status text
+  readonly data: T | null;       // Parsed error response body
+  readonly headers: Headers;     // Response headers
+  readonly response: Response;   // The raw Response object
+  readonly method: string;       // HTTP method used
+  readonly url: string;          // Request URL
+}
+```
+
+The error message is built automatically from the response body. It checks common fields (`detail`, `message`, `error`, `title`) before falling back to `HTTP <status> <statusText>`.
+
+### Checking error details in a component
+
+```tsx
+import { useHealthCheck } from "@workspace/api-client-react";
+import type { ErrorType } from "@workspace/api-client-react";
+
+function HealthStatus() {
+  const { isError, error } = useHealthCheck();
+
+  if (isError) {
+    const apiError = error as ErrorType;
+    console.error(apiError.status, apiError.data);
+    return <p>Error {apiError.status}: {apiError.message}</p>;
+  }
+
+  return null;
+}
+```
+
+## Configuring the base URL
+
+By default, `customFetch` passes URLs to the native `fetch` as-is. Generated hooks use root-relative paths (e.g. `/api/healthz`), which resolve against the current origin in a browser.
+
+To point hooks at a different host — for example, during server-side rendering or in tests — prepend a base URL inside `customFetch`:
+
+```typescript src/custom-fetch.ts
+const BASE_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "";
+
+export async function customFetch<T = unknown>(
+  input: RequestInfo | URL,
+  options: CustomFetchOptions = {},
+): Promise<T> {
+  const resolvedInput =
+    typeof input === "string" && input.startsWith("/")
+      ? `${BASE_URL}${input}`
+      : input;
+
+  // ... rest of function
+  const response = await fetch(resolvedInput, { ...init, method, headers });
+  // ...
+}
+```
+
+## Passing custom request options
+
+Any `RequestInit` field (`headers`, `credentials`, `signal`, etc.) can be passed through `options` in the generated hooks and forwarded to `customFetch`:
+
+<CodeGroup>
+
+```tsx Adding headers
+const { data } = useHealthCheck({
+  request: {
+    headers: { Authorization: `Bearer ${token}` },
+  },
+});
+```
+
+```tsx Including credentials
+const { data } = useHealthCheck({
+  request: {
+    credentials: "include",
+  },
+});
+```
+
+```tsx Manual call with signal
+const controller = new AbortController();
+const result = await healthCheck({ signal: controller.signal });
+```
+
+</CodeGroup>
+
+Headers are merged from multiple sources in this order (later sources win):
+1. Headers on the `Request` object (if `input` is a `Request`)
+2. Headers passed in `options.headers`
+3. Auto-injected headers (`Content-Type`, `Accept`) for JSON bodies and `responseType: "json"`
+
+## `ResponseParseError`
+
+Thrown when a successful (`2xx`) response body claims to be JSON but cannot be parsed:
+
+```typescript
+export class ResponseParseError extends Error {
+  readonly name = "ResponseParseError";
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
+  readonly response: Response;
+  readonly method: string;
+  readonly url: string;
+  readonly rawBody: string;  // The unparseable response text
+  readonly cause: unknown;   // The original JSON.parse error
+}
+```

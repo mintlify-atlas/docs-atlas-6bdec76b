@@ -1,0 +1,93 @@
+---
+title: 'Migrations'
+description: 'How to push schema changes to PostgreSQL in development using drizzle-kit, and how production schema updates are handled.'
+keywords: ['migrations', 'drizzle-kit', 'push', 'schema', 'DATABASE_URL', 'drizzle.config.ts']
+---
+
+EduLearn Hub uses `drizzle-kit` to manage schema changes. During local development you push schema changes directly to the database. In production, schema updates are applied automatically by Replit when the project is published.
+
+## `drizzle.config.ts`
+
+`drizzle.config.ts` at the root of `lib/db` configures `drizzle-kit`. It reads `DATABASE_URL` from the environment, points to the schema entry file, and sets the SQL dialect.
+
+```typescript drizzle.config.ts
+import { defineConfig } from "drizzle-kit";
+import path from "path";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL, ensure the database is provisioned");
+}
+
+export default defineConfig({
+  schema: path.join(__dirname, "./src/schema/index.ts"),
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
+```
+
+<Warning>
+`drizzle.config.ts` throws at startup if `DATABASE_URL` is not set, the same as `src/index.ts`. Make sure the variable is exported before running any `drizzle-kit` command.
+</Warning>
+
+## Connection string format
+
+`DATABASE_URL` must be a standard PostgreSQL URI:
+
+```text
+postgresql://user:password@host:port/database
+```
+
+<Info>
+The Replit environment provisions `DATABASE_URL` automatically when a PostgreSQL database is attached. When running locally, export the variable in your shell before using any `pnpm db:*` command.
+</Info>
+
+## Development workflow
+
+Use `drizzle-kit push` to apply your local schema to the database without generating migration files. This is the recommended workflow during active development.
+
+<Steps>
+  <Step title="Define or update your schema">
+    Edit or add a table file under `src/schema/` and re-export it from `src/schema/index.ts`. See [Schema](/database/schema) for the full pattern.
+  </Step>
+  <Step title="Push the schema">
+    Run the push command from the workspace root:
+
+    ```bash
+    pnpm --filter @workspace/db run push
+    ```
+
+    `drizzle-kit` compares the current database structure against your schema definition and applies the minimum set of `ALTER TABLE` or `CREATE TABLE` statements needed to bring them in sync.
+  </Step>
+  <Step title="Verify the changes">
+    Confirm the table exists and has the expected columns by running a quick query in your application or by using `psql` against `DATABASE_URL`.
+  </Step>
+</Steps>
+
+## `push` vs. `push-force`
+
+| Command | When to use |
+|---|---|
+| `push` | Safe schema changes — adding tables, adding nullable columns, adding indexes. |
+| `push-force` | Breaking changes such as dropping columns, renaming columns, or changing types. |
+
+```bash
+# Safe push — prompts before destructive operations
+pnpm --filter @workspace/db run push
+
+# Force push — applies breaking changes without prompting
+pnpm --filter @workspace/db run push-force
+```
+
+<Warning>
+`push-force` can cause **data loss**. It applies breaking schema changes — including column drops — without prompting for confirmation. Only use it on a development database where losing data is acceptable.
+</Warning>
+
+## Production deployments
+
+Schema migrations in production are handled automatically by Replit when the project is published. You do not need to run `push` manually against the production database.
+
+<Note>
+Never run `push-force` against a production database. If a schema change requires a breaking migration in production, coordinate with your team and use a managed migration strategy.
+</Note>

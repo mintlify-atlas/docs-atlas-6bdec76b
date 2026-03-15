@@ -1,0 +1,213 @@
+---
+title: 'Monorepo structure'
+description: 'How the pnpm workspace and TypeScript composite projects work together for fast, correct cross-package builds.'
+keywords: ['monorepo', 'pnpm', 'workspace', 'typescript', 'composite', 'project references', 'esbuild', 'tsc']
+---
+
+The repository is a **pnpm workspace monorepo**. All packages share a single `node_modules` install at the root, pin common versions in a shared `catalog`, and type-check together using TypeScript's composite project references.
+
+## Workspace glob patterns
+
+The workspace root is defined in `pnpm-workspace.yaml`. pnpm scans these globs to discover packages:
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - artifacts/*
+  - lib/*
+  - lib/integrations/*
+  - scripts
+```
+
+| Glob | What lives here |
+|---|---|
+| `artifacts/*` | Deployable applications (`api-server`, `mockup-sandbox`, `pi-day`) |
+| `lib/*` | Shared libraries (`db`, `api-spec`, `api-zod`, `api-client-react`) |
+| `lib/integrations/*` | Integration-specific libraries (reserved for future use) |
+| `scripts` | Single utility-scripts package |
+
+<Note>
+The `scripts` entry is a bare path, not a glob — there is exactly one scripts package in the workspace.
+</Note>
+
+### Shared version catalog
+
+Common dependencies are declared once in the `catalog` section and referenced as `catalog:` throughout individual `package.json` files:
+
+```yaml
+catalog:
+  '@tanstack/react-query': ^5.90.21
+  drizzle-orm: ^0.45.1
+  react: 19.1.0
+  tsx: ^4.21.0
+  vite: ^7.3.0
+  zod: ^3.25.76
+```
+
+This guarantees every package that depends on, say, `react` resolves to exactly the same version.
+
+## Why TypeScript composite projects
+
+TypeScript's `--build` mode (composite projects) gives the monorepo two concrete benefits:
+
+1. **Incremental builds** — `tsc --build` compares timestamps and skips packages that have not changed. A full from-scratch typecheck is only needed when switching branches or after a clean.
+2. **Cross-package type checking** — when `@workspace/api-server` imports from `@workspace/db`, TypeScript resolves types from `@workspace/db`'s pre-built `.d.ts` files in `dist/`. Without composite mode this would require each consumer to re-compile its dependency.
+
+## The `tsconfig.base.json` shared config
+
+Every package extends this file:
+
+```json
+// tsconfig.base.json
+{
+  "compilerOptions": {
+    "isolatedModules": true,
+    "lib": ["es2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmitOnError": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "types": [],
+    "customConditions": ["workspace"]
+  }
+}
+```
+
+Key choices:
+
+- **`moduleResolution: "bundler"`** — matches how esbuild and Vite resolve modules (bare specifiers, no `.js` extension tricks needed).
+- **`target: "es2022"`** — modern JS output; no unnecessary downleveling.
+- **`isolatedModules: true`** — each file must be independently transpilable (compatible with esbuild and tsx).
+- **`customConditions: ["workspace"]`** — enables the `"workspace"` export condition in `package.json` for intra-monorepo source imports.
+- **`types: []`** — no global `@types` are injected by default; each package opts in explicitly (e.g. `"types": ["node"]`).
+
+## How project references work
+
+The root `tsconfig.json` lists every _library_ package as a reference:
+
+```json
+// tsconfig.json (root)
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    { "path": "./lib/db" },
+    { "path": "./lib/api-client-react" },
+    { "path": "./lib/api-zod" }
+  ]
+}
+```
+
+When a package depends on another workspace package it must list it in its own `references` array. For example, `@workspace/api-server` depends on `@workspace/db` and `@workspace/api-zod`:
+
+```json
+// artifacts/api-server/tsconfig.json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../lib/db" },
+    { "path": "../../lib/api-zod" }
+  ]
+}
+```
+
+`tsc --build` reads these references to determine build order and know which packages need to be compiled first before their consumers can type-check.
+
+A library package (e.g. `@workspace/db`) declares itself as composite:
+
+```json
+// lib/db/tsconfig.json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
+```
+
+<Warning>
+Always typecheck from the **root**, not from inside an individual package. Running `tsc` inside a single package will fail if its dependencies have not been built yet.
+
+```bash
+# correct
+pnpm run typecheck
+
+# will likely fail for packages with workspace dependencies
+cd lib/db && tsc
+```
+</Warning>
+
+## Root scripts
+
+```json
+// package.json (root)
+{
+  "scripts": {
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+  }
+}
+```
+
+<AccordionGroup>
+  <Accordion title="pnpm run typecheck">
+    Runs in two phases:
+
+    1. `typecheck:libs` — calls `tsc --build` at the root, which processes all `references` entries in `tsconfig.json` (the lib packages) in dependency order.
+    2. Then runs each artifact/scripts package's own `typecheck` script (usually `tsc -p tsconfig.json --noEmit`) via pnpm's recursive `--filter` flags.
+
+    Artifact packages are not in the root `tsconfig.json` references because they use `--noEmit` (no `.d.ts` output needed — they are never consumed by other packages).
+  </Accordion>
+  <Accordion title="pnpm run build">
+    First calls `typecheck` to ensure there are no type errors, then runs `pnpm -r --if-present run build` — pnpm's recursive flag runs the `build` script in every package that defines one, in dependency order.
+
+    Each package defines its own build tooling. Lib packages do not typically have a `build` script (tsc emits their `.d.ts` files). Application packages use esbuild or Vite.
+  </Accordion>
+</AccordionGroup>
+
+## The `emitDeclarationOnly` pattern
+
+Lib packages set `emitDeclarationOnly: true` in their tsconfig. This means:
+
+- `tsc --build` writes **only `.d.ts` declaration files** into `dist/`.
+- No JavaScript is emitted by `tsc`.
+- Actual JavaScript bundling is handled by esbuild (for the API server), Vite (for React apps), or tsx (for running scripts directly).
+
+```text
+lib/db/
+├── src/
+│   └── index.ts          ← TypeScript source
+└── dist/
+    ├── index.d.ts        ← emitted by tsc  (types only)
+    └── index.d.ts.map    ← declaration map (declarationMap: true)
+```
+
+<Tip>
+This split — tsc for types, esbuild/Vite for JS — is the standard pattern for monorepos that need both fast bundling and accurate incremental type-checking. `tsc` is good at building the type graph; esbuild is orders of magnitude faster at producing JavaScript.
+</Tip>
+
+For example, `@workspace/api-server`'s build script delegates entirely to esbuild via `tsx ./build.ts`, producing a single CJS bundle at `dist/index.cjs`. The `typecheck` step (run first by `pnpm run build`) already caught any type errors before esbuild is invoked.

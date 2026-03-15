@@ -1,80 +1,142 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get EduLearn Hub running locally in under five minutes.'
+keywords: ['quickstart', 'setup', 'local development', 'pnpm', 'database', 'api server']
 ---
 
-## Get started in three steps
+This guide walks you through cloning the repository, installing dependencies, connecting a database, and starting the API server.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Check prerequisites">
+    You need **Node.js 24** and **pnpm** installed before you begin.
 
-### Step 1: Set up your local environment
+    ```bash
+    node --version   # should print v24.x.x
+    pnpm --version   # should print 9.x.x or later
+    ```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Tip>
+      Install pnpm with `npm install -g pnpm` or via [pnpm's official installation guide](https://pnpm.io/installation).
+    </Tip>
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/Fercho12s/EduLearn-Hub.git
+    cd EduLearn-Hub
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Install dependencies">
+    From the workspace root, run a single install command. pnpm resolves all workspace packages together.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    pnpm install
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Note>
+      The root `package.json` enforces pnpm via a `preinstall` script. Running `npm install` or `yarn` will exit with an error.
+    </Note>
+  </Step>
 
-### Step 3: Go live
+  <Step title="Set environment variables">
+    The API server and database layer require two environment variables. Create a `.env` file at the workspace root (or export them in your shell):
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash .env
+    DATABASE_URL=postgres://user:password@localhost:5432/edulearn
+    PORT=3000
+    ```
+
+    | Variable | Description |
+    |---|---|
+    | `DATABASE_URL` | PostgreSQL connection string used by `@workspace/db` and Drizzle Kit. |
+    | `PORT` | Port the Express API server listens on. |
+
+    <Warning>
+      Never commit `.env` to version control. Add it to `.gitignore` if it isn't already.
+    </Warning>
+  </Step>
+
+  <Step title="Push the database schema">
+    Apply the Drizzle schema to your database. This introspects the schema definitions in `lib/db/src/schema/` and pushes them directly — no migration files are generated.
+
+    ```bash
+    pnpm --filter @workspace/db run push
+    ```
+
+    If you hit a prompt about conflicting changes, use the force variant:
+
+    ```bash
+    pnpm --filter @workspace/db run push-force
+    ```
+
+    <Note>
+      `push` calls `drizzle-kit push --config ./drizzle.config.ts` inside `lib/db/`. It requires `DATABASE_URL` to be set in your environment.
+    </Note>
+  </Step>
+
+  <Step title="Start the API dev server">
+    Run the API server in development mode using `tsx` for on-the-fly TypeScript execution:
+
+    ```bash
+    pnpm --filter @workspace/api-server run dev
+    ```
+
+    You should see output similar to:
+
+    ```text
+    Server listening on port 3000
+    ```
+
+    The entry point is `artifacts/api-server/src/index.ts`, which reads `PORT` and starts Express. All routes are mounted under the `/api` prefix.
+  </Step>
+
+  <Step title="Verify the health endpoint">
+    With the server running, confirm it is responding correctly:
+
+    ```bash
+    curl http://localhost:3000/api/health
+    ```
+
+    Expected response:
+
+    ```json
+    { "status": "ok" }
+    ```
+
+    <Tip>
+      Replace `3000` with whatever you set for `PORT` in your `.env` file.
+    </Tip>
+  </Step>
+
+  <Step title="(Optional) Run the Pi Day frontend">
+    EduLearn Hub includes an interactive Pi Day web application. To start it:
+
+    ```bash
+    pnpm --filter @workspace/pi-day run dev
+    ```
+
+    Vite will print the local URL (typically `http://localhost:5173`). The app connects to the API server, so make sure the API dev server is already running.
+
+    <Note>
+      The Pi Day app is located at `artifacts/pi-day/`. It is built with React 19, Vite, Tailwind CSS v4, Framer Motion, and TanStack Query v5.
+    </Note>
+  </Step>
+</Steps>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Architecture overview" icon="sitemap" href="/architecture/overview">
+    Learn how the packages relate to each other and the overall system design.
+  </Card>
+  <Card title="API server" icon="server" href="/api-server/overview">
+    Explore the Express route structure, middleware, and how to add new endpoints.
+  </Card>
+  <Card title="Database" icon="database" href="/database/overview">
+    Understand the Drizzle ORM schema, the DB client, and how migrations work.
+  </Card>
+  <Card title="Codegen" icon="wand-magic-sparkles" href="/development/codegen">
+    See how Orval generates Zod schemas and React Query hooks from `openapi.yaml`.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

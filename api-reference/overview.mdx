@@ -1,0 +1,99 @@
+---
+title: 'Overview'
+description: 'EduLearn Hub REST API — base URL, versioning, response format, and usage examples.'
+keywords: ['api', 'rest', 'overview', 'base url', 'authentication', 'curl', 'fetch', 'react query']
+---
+
+The EduLearn Hub API is a REST API that returns JSON responses. All routes are mounted at `/api`.
+
+## API details
+
+| Field | Value |
+|---|---|
+| Version | `0.1.0` |
+| Base path | `/api` |
+| Spec format | OpenAPI 3.1.0 |
+| Spec location | `lib/api-spec/openapi.yaml` |
+| Response format | JSON |
+| Authentication | None required |
+
+## Available endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/healthz` | Returns server health status |
+
+## Authentication
+
+<Note>
+No authentication is required for any endpoint at this time. All endpoints are publicly accessible.
+</Note>
+
+## Response format
+
+All responses are JSON. Successful responses use standard HTTP `2xx` status codes. Errors use standard HTTP error codes.
+
+```json
+{ "status": "ok" }
+```
+
+## Error handling
+
+The API uses standard HTTP status codes:
+
+| Code | Meaning |
+|---|---|
+| `200` | Request succeeded |
+| `400` | Bad request — malformed input |
+| `404` | Resource not found |
+| `500` | Internal server error |
+
+## Usage examples
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl -X GET http://localhost:3000/api/healthz
+    ```
+  </Tab>
+  <Tab title="fetch">
+    ```typescript
+    const response = await fetch('/api/healthz');
+    const data = await response.json();
+    console.log(data); // { status: 'ok' }
+    ```
+  </Tab>
+  <Tab title="React Query hook">
+    ```tsx
+    import { useHealthCheck } from '@workspace/api-client-react';
+
+    export function StatusBadge() {
+      const { data, isLoading, isError } = useHealthCheck();
+
+      if (isLoading) return <span>Loading...</span>;
+      if (isError) return <span>Error</span>;
+
+      return <span>{data?.status}</span>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## OpenAPI specification
+
+The full OpenAPI spec is at `lib/api-spec/openapi.yaml`. Client code and Zod schemas are generated from this file using Orval.
+
+```yaml lib/api-spec/openapi.yaml
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+```
+
+<Tip>
+To add a new endpoint, update `lib/api-spec/openapi.yaml` and run codegen to regenerate the client libraries and Zod schemas. See [Codegen](/development/codegen) for details.
+</Tip>

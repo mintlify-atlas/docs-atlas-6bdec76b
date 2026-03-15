@@ -1,0 +1,126 @@
+---
+title: 'Introduction'
+description: 'EduLearn Hub is a full-stack educational platform monorepo built with TypeScript, Express 5, PostgreSQL, and React.'
+keywords: ['edulearn hub', 'monorepo', 'pnpm', 'typescript', 'express', 'postgresql', 'drizzle', 'openapi']
+---
+
+EduLearn Hub is a **TypeScript monorepo** that serves as the foundation for building interactive educational web applications. It brings together a production-ready backend, a type-safe database layer, auto-generated client libraries, and rich React frontends — all managed in a single pnpm workspace.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your local development environment running in minutes.
+  </Card>
+  <Card title="Architecture overview" icon="sitemap" href="/architecture/overview">
+    Understand how the packages connect and the key design decisions.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/overview">
+    Explore REST endpoints, schemas, and generated clients.
+  </Card>
+  <Card title="Frontend apps" icon="browser" href="/frontend/pi-day">
+    Discover the Pi Day explorer and the component mockup sandbox.
+  </Card>
+</CardGroup>
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Package manager | pnpm workspaces |
+| Language | TypeScript 5.9 |
+| API framework | Express 5 |
+| Database ORM | Drizzle ORM |
+| Database | PostgreSQL |
+| Validation | Zod v4 (`zod/v4`) |
+| API codegen | Orval |
+| Frontend | React 19 + Vite |
+| UI components | Radix UI + Tailwind CSS v4 |
+| State management | TanStack Query v5 |
+| Bundler | esbuild |
+
+## Monorepo structure
+
+The repository is organized into three top-level directories: `artifacts/` for deployable applications, `lib/` for shared libraries, and `scripts/` for utility scripts.
+
+```text
+artifacts-monorepo/
+├── artifacts/
+│   ├── api-server/         # @workspace/api-server — Express 5 REST API
+│   ├── mockup-sandbox/     # Component and UI mockup playground
+│   └── pi-day/             # Interactive Pi Day frontend app
+├── lib/
+│   ├── api-spec/           # @workspace/api-spec — OpenAPI spec + Orval config
+│   ├── api-client-react/   # @workspace/api-client-react — generated React Query hooks
+│   ├── api-zod/            # @workspace/api-zod — generated Zod schemas
+│   └── db/                 # @workspace/db — Drizzle ORM schema + DB connection
+├── scripts/                # @workspace/scripts — utility scripts
+├── pnpm-workspace.yaml
+├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
+├── tsconfig.json           # Root TS project references
+└── package.json
+```
+
+## Packages
+
+<CardGroup cols={2}>
+  <Card title="api-server" icon="server" href="/api-server/overview">
+    **`@workspace/api-server`** — Express 5 REST API server. Routes use `@workspace/api-zod` for validation and `@workspace/db` for persistence. Bundles to a single CJS file via esbuild.
+  </Card>
+  <Card title="db" icon="database" href="/database/overview">
+    **`@workspace/db`** — Drizzle ORM layer with a PostgreSQL `Pool`, schema definitions, and `drizzle-zod` insert schemas. Exports a Drizzle client instance and schema models.
+  </Card>
+  <Card title="api-spec" icon="file-code" href="/development/codegen">
+    **`@workspace/api-spec`** — Owns `openapi.yaml` (OpenAPI 3.1) and the Orval config. Running codegen writes output into `api-client-react` and `api-zod`.
+  </Card>
+  <Card title="api-zod" icon="shield-check" href="/client-libraries/api-zod">
+    **`@workspace/api-zod`** — Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
+  </Card>
+  <Card title="api-client-react" icon="react" href="/client-libraries/api-client-react">
+    **`@workspace/api-client-react`** — Generated React Query hooks and fetch client (e.g. `useHealthCheck`, `healthCheck`) consumed by frontend apps.
+  </Card>
+  <Card title="pi-day" icon="infinity" href="/frontend/pi-day">
+    **`artifacts/pi-day`** — Interactive Pi Day web app with visualizations, memory games, and an AI chatbot. Built with React 19, Vite, and Tailwind CSS v4.
+  </Card>
+  <Card title="mockup-sandbox" icon="layers" href="/frontend/mockup-sandbox">
+    **`artifacts/mockup-sandbox`** — UI component playground and prototyping environment.
+  </Card>
+  <Card title="scripts" icon="terminal" href="/development/scripts">
+    **`@workspace/scripts`** — Utility scripts. Each `.ts` file in `src/` has a corresponding npm script. Run via `pnpm --filter @workspace/scripts run <script>`.
+  </Card>
+</CardGroup>
+
+## Key design decisions
+
+### TypeScript composite projects
+
+Every package extends `tsconfig.base.json`, which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+
+- **Always typecheck from the root** — run `pnpm run typecheck`, which executes `tsc --build --emitDeclarationOnly`. This builds the full dependency graph so cross-package imports resolve correctly.
+- **`emitDeclarationOnly`** — only `.d.ts` files are emitted during typecheck. Actual JS bundling is handled by esbuild, tsx, or Vite — not `tsc`.
+- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+
+<Warning>
+Running `tsc` inside a single package will fail if its dependencies haven't been built yet. Always run typechecking from the workspace root.
+</Warning>
+
+### OpenAPI-first API development
+
+The single source of truth for the API contract is `lib/api-spec/openapi.yaml`. From this file, Orval generates two outputs automatically:
+
+- **`lib/api-zod/`** — Zod schemas used by the API server for runtime request and response validation.
+- **`lib/api-client-react/`** — React Query hooks and a typed fetch client used by frontend applications.
+
+This ensures the server, generated validators, and client hooks are always in sync with the OpenAPI spec.
+
+### esbuild for production bundling
+
+The API server uses esbuild to produce a single `dist/index.cjs` bundle. It bundles an allowlist of dependencies (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest, resulting in a self-contained artifact ready for deployment.
+
+## Root scripts
+
+```bash
+# Typecheck all packages using project references
+pnpm run typecheck
+
+# Typecheck then build all packages that define a build script
+pnpm run build
+```
