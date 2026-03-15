@@ -1,0 +1,79 @@
+{
+  "projectType": "saas",
+  "projectName": "EduLearn Hub",
+  "projectDescription": "A full-stack educational platform monorepo built with Express, PostgreSQL, and React, featuring an API server, generated client libraries, and interactive learning experiences like the Pi Day explorer.",
+  "theme": "palm",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4338ca",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Architecture",
+            "pages": ["architecture/overview", "architecture/monorepo", "architecture/packages"]
+          },
+          {
+            "group": "API Server",
+            "pages": ["api-server/overview", "api-server/routes", "api-server/middleware", "api-server/deployment"]
+          },
+          {
+            "group": "Database",
+            "pages": ["database/overview", "database/schema", "database/migrations"]
+          },
+          {
+            "group": "Client Libraries",
+            "pages": ["client-libraries/api-client-react", "client-libraries/api-zod", "client-libraries/custom-fetch"]
+          },
+          {
+            "group": "Frontend Apps",
+            "pages": ["frontend/pi-day", "frontend/mockup-sandbox"]
+          },
+          {
+            "group": "Development",
+            "pages": ["development/setup", "development/scripts", "development/codegen", "development/typescript"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": ["api-reference/overview", "api-reference/health"]
+          },
+          {
+            "group": "Schemas",
+            "pages": ["api-reference/schemas"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "pnpm monorepo with TypeScript project references for efficient builds",
+    "Express 5 API server with Zod-validated request/response handling",
+    "PostgreSQL database integration via Drizzle ORM",
+    "OpenAPI 3.1 spec driving Orval code generation for React Query hooks and Zod schemas",
+    "Interactive Pi Day educational web app with visualizations, games, and a chatbot",
+    "Reusable component mockup sandbox for rapid UI development",
+    "esbuild bundling for production deployments"
+  ],
+  "publicApiSurface": [
+    "GET /api/healthz — Health check endpoint returning server status",
+    "HealthCheckResponse (Zod schema) — validates { status: string }",
+    "useHealthCheck() — React Query hook for the health check endpoint",
+    "healthCheck() — raw fetch function for the health check endpoint",
+    "db — Drizzle ORM instance with PostgreSQL connection",
+    "pool — pg.Pool instance for direct database access",
+    "@workspace/api-client-react — generated React Query hooks package",
+    "@workspace/api-zod — generated Zod validation schemas package",
+    "@workspace/db — database client and schema exports"
+  ]
+}
